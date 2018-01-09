@@ -16,8 +16,11 @@ Table of Contents
     * [create_a_answer](#create_a_answer)
     * [create_aaaa_answer](#create_aaaa_answer)
     * [create_cname_answer](#create_cname_answer)
+    * [create_txt_answer](#create_txt_answer)
     * [create_ns_answer](#create_ns_answer)
     * [create_soa_answer](#create_soa_answer)
+    * [create_mx_answer](#create_mx_answer)
+    * [create_srv_answer](#create_srv_answer)
     * [encode_response](#encode_response)
 * [Constants](#constants)
     * [TYPE_A](#type_a)
@@ -69,8 +72,8 @@ stream {
             end
 
             local dns = server:new()
-            local ok, err = dns:decode_request(req)
-            if not ok then
+            local request, err = dns:decode_request(req)
+            if not request then
                 ngx.log(ngx.ERR, "failed to decode request: ", err)
 
                 local resp = dns:encode_response()
@@ -83,13 +86,13 @@ stream {
                 return
             end
 
-            local query = dns.request.questions[1]
+            local query = request.questions[1]
             ngx.log(ngx.DEBUG, "qname: ", query.qname, " qtype: ", query.qtype)
 
             local cname = "sinacloud.com"
 
-            if query.qtype == dns.TYPE_CNAME or
-            query.qtype == dns.TYPE_AAAA or query.qtype == dns.TYPE_A then
+            if query.qtype == server.TYPE_CNAME or
+                query.qtype == server.TYPE_AAAA or query.qtype == server.TYPE_A then
 
                 local err = dns:create_cname_answer(query.qname, 600, cname)
                 if err then
@@ -97,16 +100,78 @@ stream {
                     return
                 end
             else
-                dns:create_soa_answer("test.com", 600, "a.root-test.com", "liwq.test.com", 1515161223, 1800, 900, 604800, 86400)
+                dns:create_soa_answer("test.com", 600, "a.root-test.com", "vislee.test.com", 1515161223, 1800, 900, 604800, 86400)
+            end
+
+            local resp = dns:encode_response()
+            local ok, err = sock:send(resp)
+            if not ok then
+                ngx.log(ngx.ERR, "failed to send: ", err)
+                return
             end
         }
+    }
 
-        local resp = dns:encode_response()
-        local ok, err = sock:send(resp)
-        if not ok then
-            ngx.log(ngx.ERR, "failed to send: ", err)
+    server {
+        listen 53;
+        content_by_lua_block {
+            local bit    = require 'bit'
+            local lshift = bit.lshift
+            local rshift = bit.rshift
+            local band   = bit.band
+            local byte   = string.byte
+            local char   = string.char
+            local server = require 'resty.dns.server'
+
+            local sock, err = ngx.req.socket()
+            if not sock then
+                ngx.log(ngx.ERR, "failed to get the request socket: ", err)
+                return ngx.exit(ngx.ERROR)
+            end
+
+            local buf, err = sock:receive(2)
+            if not buf then
+                ngx.log(ngx.ERR, "failed to receive: ", err)
+                return ngx.exit(ngx.ERROR)
+            end
+
+            local len_hi = byte(buf, 1)
+            local len_lo = byte(buf, 2)
+            local len = lshift(len_hi, 8) + len_lo
+            local data, err = sock:receive(len)
+            if not data then
+                ngx.log(ngx.ERR, "failed to receive: ", err)
+                return ngx.exit(ngx.ERROR)
+            end
+
+            local dns = server:new()
+            local request, err = dns:decode_request(data)
+            if not request then
+                ngx.log(ngx.ERR, "failed to decode dns request: ", err)
+                return
+            end
+
+            local query = request.questions[1]
+            ngx.log(ngx.DEBUG, "qname: ", query.qname, " qtype: ", query.qtype)
+
+            if query.qtype == server.TYPE_CNAME or query.qtype == server.TYPE_A or query.qtype == TYPE_AAAA then
+                dns:create_cname_answer(query.qname, 600, "sinacloud.com")
+            else
+                dns:create_soa_answer("test.com", 600, "a.root-test.com", "vislee.test.com", 1515161223, 1800, 900, 604800, 86400)
+            end
+
+            local resp = dns:encode_response()
+            local len = #resp
+            local len_hi = char(rshift(len, 8))
+            local len_lo = char(band(len, 0xff))
+
+            local ok, err = sock:send({len_hi, len_lo, resp})
+            if not ok then
+                ngx.log(ngx.ERR, "failed to send: ", err)
+                return
+            end
             return
-        end
+        }
     }
 }
 
@@ -129,9 +194,30 @@ Creates a dns.server object. Returns `nil` and an message string on error.
 
 decode_request
 --------------
-`syntax: ok, err = s:decode_request(request)`
+`syntax: request, err = s:decode_request(buf)`
 
 Parse the DNS request.
+
+The request returned the lua table which usually takes some of the following fields:
+
+* `header`
+
+    * `id` : The identifier assigned by the program that generates any kind of query.
+
+    * `qr` : specifies whether this message is a query (`0`), or a response (`1`).
+
+    * `opcode` : 
+
+    * `aa` : 
+    * `tc` :
+    * `rd` :
+    * `ra` :
+    * `z` :
+    * `rcode` :
+
+* `questions`
+
+
 
 [Back to TOC](#table-of-contents)
 
@@ -192,6 +278,25 @@ which usually takes some of the following fields:
 
 [Back to TOC](#table-of-contents)
 
+create_txt_answer
+------------------
+`syntax: err = s:create_txt_answer(name, ttl, txt)`
+
+Create the txt records. Returns `nil` or an message string on error.
+which usually takes some of the following fields:
+
+* `name`
+
+    The resource record name.
+* `ttl`
+
+    The time-to-live (TTL) value in seconds for the current resource record.
+* `txt`
+
+    The text strings.
+
+[Back to TOC](#table-of-contents)
+
 create_ns_answer
 ----------------
 `syntax: err = s:create_ns_answer(name, ttl, nsdname)`
@@ -248,11 +353,61 @@ which usually takes some of the following fields:
 
 [Back to TOC](#table-of-contents)
 
+create_mx_answer
+----------------
+`syntax: err = s:create_mx_answer(name, ttl, preference, exchange)`
+
+Create the MX records. Returns `nil` or an message string on error.
+which usually takes some of the following fields:
+
+* `name`
+
+    The resource record name.
+* `ttl`
+
+    The time-to-live (TTL) value in seconds for the current resource record.
+* `preference`
+
+    The preference of this mail exchange.
+* `exchange`
+
+    The mail exchange.
+
+[Back to TOC](#table-of-contents)
+
+create_srv_answer
+-----------------
+`syntax: err = s:create_srv_answer(name, ttl, priority, weight, port, target)`
+
+Create the SRV records. Returns `nil` or an message string on error.
+which usually takes some of the following fields:
+
+* `name`
+
+    The resource record name.
+* `ttl`
+
+    The time-to-live (TTL) value in seconds for the current resource record.
+* `priority`
+
+    The priority of this target host.
+* `weight`
+
+    The weight field specifies a relative weight for entries with the same priority.
+* `port`
+
+    The port on this target host of this service.
+* `target`
+
+    The domain name of the target host.
+
+[Back to TOC](#table-of-contents)
+
 encode_response
 ---------------
 `syntax: resp = s:encode_response()`
 
-Encode the DNS answers. Returns an message string on respone or `nil`.
+Encode the DNS answers. Returns an message string on response or `nil`.
 
 [Back to TOC](#table-of-contents)
 
