@@ -21,6 +21,7 @@ Table of Contents
     * [create_soa_answer](#create_soa_answer)
     * [create_mx_answer](#create_mx_answer)
     * [create_srv_answer](#create_srv_answer)
+    * [create_response_header](#create_response_header)
     * [encode_response](#encode_response)
 * [Constants](#constants)
     * [TYPE_A](#type_a)
@@ -31,6 +32,7 @@ Table of Contents
     * [TYPE_TXT](#type_txt)
     * [TYPE_AAAA](#type_aaaa)
     * [TYPE_SRV](#type_srv)
+    * [RCODE_NOT_IMPLEMENTED](#rcode_not_implemented)
 * [TODO](#todo)
 * [Author](#author)
 * [Copyright and License](#copyright-and-license)
@@ -154,8 +156,11 @@ stream {
             local query = request.questions[1]
             ngx.log(ngx.DEBUG, "qname: ", query.qname, " qtype: ", query.qtype)
 
-            if query.qtype == server.TYPE_CNAME or query.qtype == server.TYPE_A or query.qtype == TYPE_AAAA then
+            if query.qtype == server.TYPE_CNAME or query.qtype == server.TYPE_A then
                 dns:create_cname_answer(query.qname, 600, "sinacloud.com")
+            elseif query.qtype == server.TYPE_AAAA then
+                local resp_header, err = dns:create_response_header(server.RCODE_NOT_IMPLEMENTED)
+                resp_header.ra = 0
             else
                 dns:create_soa_answer("test.com", 600, "a.root-test.com", "vislee.test.com", 1515161223, 1800, 900, 604800, 86400)
             end
@@ -198,25 +203,23 @@ decode_request
 
 Parse the DNS request.
 
-The request returned the lua table which usually takes some of the following fields:
+The request returned the lua table which takes some of the following fields:
 
-* `header`
+* `header`: The `header` is also a lua table which usually takes some of the following fields:
 
     * `id` : The identifier assigned by the program that generates any kind of query.
+    * `qr` : The field specifies whether this message is a query (`0`), or a response (`1`).
+    * `opcode` : The field specifies kind of query in this message.
+    * `tc` : The field specifies that this message was truncated due to length greater than that permitted on the transmission channel.
+    * `rd` : Recursion Desired. If `RD` is set, it directs the name server to pursue the query recursively.
+    * `rcode` : response code.
+    * `qdcount` : The field specifying the number of entries in the question section.
 
-    * `qr` : specifies whether this message is a query (`0`), or a response (`1`).
+* `questions` : Each entry in the `questions` is also a lua table which takes some of the following:
 
-    * `opcode` : 
-
-    * `aa` : 
-    * `tc` :
-    * `rd` :
-    * `ra` :
-    * `z` :
-    * `rcode` :
-
-* `questions`
-
+    * `qname` : A domain name of query.
+    * `qtype` : Specifies the type of the query.
+    * `qclass` : Specifies the class of the query. Usually the field is `IN` for the Internet.
 
 
 [Back to TOC](#table-of-contents)
@@ -403,6 +406,12 @@ which usually takes some of the following fields:
 
 [Back to TOC](#table-of-contents)
 
+create_response_header
+-----------------
+`syntax: resp_header, err = s:create_response_header(rcode)`
+
+[Back to TOC](#table-of-contents)
+
 encode_response
 ---------------
 `syntax: resp = s:encode_response()`
@@ -476,6 +485,15 @@ See RFC 2782 for details.
 
 [Back to TOC](#table-of-contents)
 
+RCODE_FORMAT_ERROR
+------------------
+
+[Back to TOC](#table-of-contents)
+
+RCODE_NOT_IMPLEMENTED
+---------------------
+
+[Back to TOC](#table-of-contents)
 
 TODO
 ====
