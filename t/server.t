@@ -762,9 +762,6 @@ stream lua tcp socket read timed out
         end
 
         for _, ans in ipairs(answers) do
-            for k, v in pairs(ans) do
-                ngx.log(ngx.INFO, "=ans==", k, "=", v)
-            end
             if ans.section == r.SECTION_AN then
                 if ans.name ~= "www.test.com" or ans.ttl ~= 60 or ans.address ~= "11.11.11.11" then
                     ngx.say("error")
