@@ -73,9 +73,9 @@ function _M.new(class)
                         id = 0,
                         qr = 1,
                         opcode = 0,
-                        aa = 1,
+                        aa = 0,
                         tc = 0,
-                        rd = 1,
+                        rd = 0,
                         ra = 0,
                         z  = 0,
                         rcode = 0,
@@ -239,7 +239,7 @@ function _M.create_response_header(self, rcode)
     self.response.header.id = self.request.header.id
     self.response.header.qr = 1
     self.response.header.opcode = 0
-    self.response.header.aa = 1
+    self.response.header.aa = 0
     self.response.header.tc = 0
     self.response.header.rd = 1
     self.response.header.ra = 0
@@ -316,7 +316,7 @@ function _M.encode_response(self)
     buf = buf .. _encode_2byt(self.response.header.id)
 
     -- flags
-    local flags_hi = lshift(self.response.header.qr, 7) + lshift(self.response.header.qr, 3) +
+    local flags_hi = lshift(self.response.header.qr, 7) + lshift(self.response.header.opcode, 3) +
         lshift(self.response.header.aa, 2) + lshift(self.response.header.tc, 1) + self.response.header.rd
     local flags_lo = lshift(self.response.header.ra, 7) + lshift(self.response.header.z, 4) + self.response.header.rcode
     buf = buf .. char(flags_hi, flags_lo)
