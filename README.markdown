@@ -32,6 +32,7 @@ Table of Contents
     * [TYPE_TXT](#type_txt)
     * [TYPE_AAAA](#type_aaaa)
     * [TYPE_SRV](#type_srv)
+    * [TYPE_ANY](#type_any)
     * [RCODE_NOT_IMPLEMENTED](#rcode_not_implemented)
 * [TODO](#todo)
 * [Author](#author)
@@ -482,6 +483,14 @@ TYPE_SRV
 The `SRV` resource record type, equal to the decimal number `33`.
 
 See RFC 2782 for details.
+
+[Back to TOC](#table-of-contents)
+
+TYPE_ANY
+---------
+`syntax: typ = s.TYPE_ANY`
+
+The all resource record type, equal to the decimal number `255`.
 
 [Back to TOC](#table-of-contents)
 

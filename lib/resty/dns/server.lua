@@ -25,6 +25,7 @@ local TYPE_TXT    = 16
 local TYPE_AAAA   = 28
 local TYPE_SRV    = 33
 local TYPE_SPF    = 99
+local TYPE_ANY    = 255
 
 local CLASS_IN    = 1
 
@@ -54,6 +55,7 @@ local _M = {
     TYPE_AAAA   = TYPE_AAAA,
     TYPE_SRV    = TYPE_SRV,
     TYPE_SPF    = TYPE_SPF,
+    TYPE_ANY    = TYPE_ANY,
 
     RCODE_FORMAT_ERROR    = RCODE_FORMAT_ERROR,
     RCODE_SERVER_FAILURE  = RCODE_SERVER_FAILURE,
