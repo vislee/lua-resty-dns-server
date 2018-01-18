@@ -444,7 +444,7 @@ stream lua tcp socket read timed out
         local query = request.questions[1]
         if query.qname == "www.test.com" and query.qtype == server.TYPE_NS then
             dns:create_ns_answer(query.qname, 3000, "ns1.test.com")
-            dns:create_ns_answer(query.qname, 3000, "ns1.test.com")
+            dns:create_ns_answer(query.qname, 3000, "ns2.test.com")
         else
             dns:create_response_header(server.RCODE_NOT_IMPLEMENTED)
         end
@@ -828,6 +828,127 @@ stream lua tcp socket read timed out
             dns:create_a_answer(query.qname, 60, "11.11.11.11")
             dns:create_ns_answer("test.com", 600, "ns1.test.com")
             dns:create_a_answer("ns1.test.com", 300, "22.22.22.22")
+        else
+            dns:create_response_header(server.RCODE_NOT_IMPLEMENTED)
+        end
+
+        local resp = dns:encode_response()
+        local len = #resp
+        local len_hi = char(rshift(len, 8))
+        local len_lo = char(band(len, 0xff))
+
+        local ok, err = sock:send({len_hi, len_lo, resp})
+        if not ok then
+            ngx.log(ngx.ERR, "failed to send: ", err)
+            return
+        end
+        return
+    }
+--- stream_response_like
+ok
+
+--- error_log
+stream lua tcp socket read timed out
+
+
+=== TEST 10: test all section
+--- stream_server_config
+    content_by_lua_block {
+        local resolver = require "resty.dns.resolver"
+        local r, err = resolver:new{
+            nameservers = {{"127.0.0.1", 1986} }
+        }
+        if not r then
+            ngx.say("failed to instantiate resolver: ", err)
+            return
+        end
+
+        local answers, err = r:tcp_query("test.com", { qtype = 255})
+        if not answers or #answers ~= 5 then
+            ngx.say("failed to query: ", err)
+            return
+        end
+
+        for _, ans in ipairs(answers) do
+            if ans.section ~= r.SECTION_AN then
+                ngx.say("error")
+                return
+            end
+
+            if ans.type == r.TYPE_TXT then
+                if ans.name ~= "test.com" or ans.txt ~= "v=spf1 include:_spf.test.com ~all" or ans.ttl ~= 3000 then
+                    ngx.say("error")
+                    return
+                end
+            elseif ans.type == r.TYPE_MX then
+                if ans.name ~= "test.com" or ans.ttl ~= 60 or ans.preference ~= 10 or ans.exchange ~= "aspmx.l.test.com" then
+                    ngx.say("error")
+                    return
+                end
+            elseif ans.type == r.TYPE_A then
+                if ans.name ~= "test.com" or ans.address ~= "33.33.33.33" or ans.ttl ~= 300 then
+                    ngx.say("error")
+                    return
+                end
+            elseif ans.type == r.TYPE_NS then
+                if ans.name ~= "test.com" or ans.ttl ~= 3000 or (ans.nsdname ~= "ns1.test.com" and ans.nsdname ~= "ns2.test.com") then
+                    ngx.say("error")
+                    return
+                end
+            else
+                ngx.say("error")
+                return
+            end
+        end
+        ngx.say("ok")
+    }
+
+--- stream_server_config2
+    content_by_lua_block {
+        local bit    = require 'bit'
+        local lshift = bit.lshift
+        local rshift = bit.rshift
+        local band   = bit.band
+        local byte   = string.byte
+        local char   = string.char
+        local server = require 'resty.dns.server'
+
+        local sock, err = ngx.req.socket()
+        if not sock then
+            ngx.log(ngx.ERR, "failed to get the request socket: ", err)
+            return ngx.exit(ngx.ERROR)
+        end
+
+        sock:settimeout(1000)
+        local buf, err = sock:receive(2)
+        if not buf then
+            ngx.say(string.format("sock receive error: %s", err))
+            return
+        end
+
+        local len_hi = byte(buf, 1)
+        local len_lo = byte(buf, 2)
+        local len = lshift(len_hi, 8) + len_lo
+        local data, err = sock:receive(len)
+        if not data then
+            ngx.log(ngx.ERR, "failed to receive: ", err)
+            return ngx.exit(ngx.ERROR)
+        end
+
+        local dns = server:new()
+        local request, err = dns:decode_request(data)
+        if not request then
+            ngx.log(ngx.ERR, "failed to decode dns request: ", err)
+            return
+        end
+
+        local query = request.questions[1]
+        if query.qname == "test.com" and query.qtype == server.TYPE_ANY then
+            dns:create_txt_answer(query.qname, 3000, "v=spf1 include:_spf.test.com ~all")
+            dns:create_mx_answer(query.qname, 60, 10, "aspmx.l.test.com")
+            dns:create_a_answer(query.qname, 300, "33.33.33.33")
+            dns:create_ns_answer(query.qname, 3000, "ns1.test.com")
+            dns:create_ns_answer(query.qname, 3000, "ns2.test.com")
         else
             dns:create_response_header(server.RCODE_NOT_IMPLEMENTED)
         end
