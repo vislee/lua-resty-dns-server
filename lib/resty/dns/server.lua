@@ -385,7 +385,7 @@ function _M.create_a_answer(self, name, ttl, ipv4)
 
     local query = self.request.questions[1]
     local section = SECTION_UK
-    if query.qtype == TYPE_A and query.qname == name and self.cnames.count == 0 then
+    if (query.qtype == TYPE_A or query.qtype == TYPE_ANY) and query.qname == name and self.cnames.count == 0 then
         section = SECTION_AN
     end
 
@@ -491,7 +491,7 @@ function _M.create_ns_answer(self, name, ttl, nsdname)
     answer.rdata = _encode_name(nsdname)
 
     local query = self.request.questions[1]
-    if query.qname == name and query.qtype == TYPE_NS then
+    if query.qname == name and (query.qtype == TYPE_NS or query.qtype == TYPE_ANY) then
         self.response.header.ancount = self.response.header.ancount + 1
         self.response.ansections[self.response.header.ancount] = answer
     else
@@ -523,7 +523,7 @@ function _M.create_aaaa_answer(self, name, ttl, ipv6)
 
     local query = self.request.questions[1]
     local section = SECTION_UK
-    if query.qtype == TYPE_AAAA and query.qname == name and self.cnames.count == 0 then
+    if (query.qtype == TYPE_AAAA or query.qtype == TYPE_ANY) and query.qname == name and self.cnames.count == 0 then
         section = SECTION_AN
     end
 
