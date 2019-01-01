@@ -522,7 +522,7 @@ Copyright and License
 
 This module is licensed under the BSD license.
 
-Copyright (C) 2018, by vislee.
+Copyright (C) 2018-2019, by vislee.
 
 All rights reserved.
 
