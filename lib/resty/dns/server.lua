@@ -374,7 +374,7 @@ function _M.create_a_answer(self, name, ttl, ipv4)
         return "ipv4 nil"
     end
 
-    if not ngx.re.match(ipv4, '[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}') then
+    if not ngx.re.match(ipv4, '^[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}\\.[0-9]{1,3}$') then
         ngx.log(ngx.ERR, "ipv4 format error")
         return "ipv4 format error"
     end
@@ -512,7 +512,7 @@ function _M.create_aaaa_answer(self, name, ttl, ipv6)
         return "ipv6 nil"
     end
 
-    if not ngx.re.match(ipv6, "[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+") then
+    if not ngx.re.match(ipv6, "^[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+$") then
         ngx.log(ngx.ERR, "not match ipv6")
         return "ipv6 format error"
     end
