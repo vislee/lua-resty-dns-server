@@ -284,9 +284,13 @@ local function _encode_a(ipv4)
     return gsub(ipv4, "([^.]+)%.?", function(s) return char(tonumber(s)) end)
 end
 
+local function _filter_empty(s)
+    if s == "" then return end
+    return _encode_2byt(tonumber(string.format("0x%s", s)) or 0x00)
+end
 
 local function _encode_aaaa(ipv6)
-    return gsub(ipv6, "([^:]*)%:?", function(s) return _encode_2byt(tonumber(string.format("0x%s", s)) or 0x00) end)
+    return gsub(ipv6, "([^:]*)%:?", function(s) return _filter_empty(s) end)
 end
 
 
