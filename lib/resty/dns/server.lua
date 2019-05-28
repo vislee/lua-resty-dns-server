@@ -6,6 +6,7 @@ local strsub = string.sub
 local strlen = string.len
 local char   = string.char
 local gsub   = string.gsub
+local find   = string.find
 local lshift = bit.lshift
 local rshift = bit.rshift
 local band   = bit.band
@@ -256,6 +257,23 @@ function _M.create_response_header(self, rcode)
     return self.response.header
 end
 
+local function _full_aaaa(ipv6)
+    local n = 0
+    local m = ":"
+
+    for i = 1, strlen(ipv6) do
+        local s = strsub(ipv6,i,i)
+        if s == ":" then
+            n = n + 1
+        end
+    end
+
+    for i = 0, 7 - n do
+        m = m .. "0" .. ":"
+    end
+
+    return gsub(ipv6, "::", m)
+end
 
 local function _encode_4byt(x)
     local hi_hi = band(rshift(x, 24), 0x00FF)
@@ -510,6 +528,10 @@ function _M.create_aaaa_answer(self, name, ttl, ipv6)
 
     if not ipv6 or #ipv6 == 0 then
         return "ipv6 nil"
+    end
+
+    if find(ipv6, '::') then
+        ipv6 = _full_aaaa(ipv6)
     end
 
     if not ngx.re.match(ipv6, "^[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+:[^:]+$") then
