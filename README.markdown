@@ -62,7 +62,7 @@ stream {
         listen 53 udp;
         content_by_lua_block {
             local server = require 'resty.dns.server'
-            local sock, err = ngx.req.udp_socket()
+            local sock, err = ngx.req.socket()
             if not sock then
                 ngx.log(ngx.ERR, "failed to get the request socket: ", err)
                 return ngx.exit(ngx.ERROR)
