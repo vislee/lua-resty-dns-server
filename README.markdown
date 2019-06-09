@@ -540,5 +540,6 @@ See Also
 ========
 * the stream-lua-nginx-module: https://github.com/openresty/stream-lua-nginx-module/#readme
 * the [lua-resty-dns](https://github.com/openresty/lua-resty-dns) library.
+* this [ngx_stream_ipdb_module](https://github.com/vislee/ngx_stream_ipdb_module) library can support region resolution. 
 
 [Back to TOC](#table-of-contents)
