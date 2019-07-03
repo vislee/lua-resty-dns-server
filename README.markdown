@@ -91,6 +91,7 @@ stream {
 
             local query = request.questions[1]
             ngx.log(ngx.DEBUG, "qname: ", query.qname, " qtype: ", query.qtype)
+            ngx.log(ngx.DEBUG, "subnet ip: ", query.subnet.ipaddr)
 
             local cname = "sinacloud.com"
 
