@@ -241,7 +241,6 @@ function _M.decode_request(self, req)
             self.pos = self.pos + 2 -- Option Length
             local option_length_hi, option_length_lo = byte(self.buf, self.pos - 1, self.pos)
             local option_length = lshift(option_length_hi, 8) + option_length_lo
-            debug("option_length len: ", option_length)
 
             self.pos = self.pos + 2 -- Family: IPv4 (1) or Family: IPv6 (2)
             local option_family_hi, option_family_lo = byte(self.buf, self.pos - 1, self.pos)
