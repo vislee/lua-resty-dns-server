@@ -62,7 +62,7 @@ stream {
         listen 53 udp;
         content_by_lua_block {
             local server = require 'resty.dns.server'
-            local sock, err = ngx.req.udp_socket()
+            local sock, err = ngx.req.socket()
             if not sock then
                 ngx.log(ngx.ERR, "failed to get the request socket: ", err)
                 return ngx.exit(ngx.ERROR)
@@ -540,5 +540,6 @@ See Also
 ========
 * the stream-lua-nginx-module: https://github.com/openresty/stream-lua-nginx-module/#readme
 * the [lua-resty-dns](https://github.com/openresty/lua-resty-dns) library.
+* this [ngx_stream_ipdb_module](https://github.com/vislee/ngx_stream_ipdb_module) library can support region resolution. 
 
 [Back to TOC](#table-of-contents)
