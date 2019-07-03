@@ -15,6 +15,7 @@ local concat = table.concat
 -- https://www.ietf.org/rfc/rfc1035.txt
 -- https://www.ietf.org/rfc/rfc2782.txt
 -- https://www.ietf.org/rfc/rfc3596.txt
+-- https://www.ietf.org/rfc/rfc7871.txt
 local TYPE_A      = 1
 local TYPE_NS     = 2
 local TYPE_CNAME  = 5
@@ -93,7 +94,6 @@ function _M.new(class)
         cnames = {count = 0, },
         }, mt)
 end
-
 
 function _M.decode_request(self, req)
     self.buf = self.buf .. req
@@ -223,7 +223,63 @@ function _M.decode_request(self, req)
         local class_hi, class_lo = byte(self.buf, self.pos - 1, self.pos)
         local qclass = lshift(class_hi, 8) + class_lo
 
-        self.request.questions[i] = {qname = qname, qtype = qtype, qclass = qclass}
+        -- Additional records
+        local subnet = { netmask = 0, ipaddr  = 0, protocol = 0 }
+        -- self.pos = self.pos + 1 -- Name
+        -- self.pos = self.pos + 2 -- Type
+        self.pos = self.pos + 3
+        local option_type = byte(self.buf, self.pos)
+        if option_type == 41 then
+            -- self.pos = self.pos + 2 -- UDP payload size
+            -- self.pos = self.pos + 1 -- Higher bits in extended RCODE
+            -- self.pos = self.pos + 1 -- EDNS0 version
+            -- self.pos = self.pos + 2 -- DNSSEC
+            -- self.pos = self.pos + 2 -- Data length
+            -- self.pos = self.pos + 2 -- Option Code: CSUBNET - Client subnet
+            self.pos = self.pos + 10
+
+            self.pos = self.pos + 2 -- Option Length
+            local option_length_hi, option_length_lo = byte(self.buf, self.pos - 1, self.pos)
+            local option_length = lshift(option_length_hi, 8) + option_length_lo
+            debug("option_length len: ", option_length)
+
+            self.pos = self.pos + 2 -- Family: IPv4 (1) or Family: IPv6 (2)
+            local option_family_hi, option_family_lo = byte(self.buf, self.pos - 1, self.pos)
+            local option_family = lshift(option_family_hi, 8) + option_family_lo
+
+            self.pos = self.pos + 1 -- Source Netmask
+            local subnet_netmask = byte(self.buf, self.pos)
+            subnet["netmask"] = subnet_netmask
+
+            self.pos = self.pos + 1 -- Scope Netmask:
+            if option_family == 1 then
+
+                local subnet_addr_v4 = {0,0,0,0}
+                for i = 1, option_length - 4 do
+                    self.pos = self.pos + 1
+                    subnet_addr_v4[i] = byte(self.buf, self.pos)
+                end
+                subnet["ipaddr"] = table.concat(subnet_addr_v4, ".")
+                subnet["protocol"] = 4
+
+            elseif option_family == 2 then
+
+                local subnet_addr_v6 = {0,0,0,0,0,0,0,0}
+                for i = 1, (option_length - 4) / 2 do
+                    self.pos = self.pos + 2
+                    local subnet_v6_hi, subnet_v6_lo = byte(self.buf, self.pos - 1, self.pos)
+                    local subnet_v6 = lshift(subnet_v6_hi, 8) + subnet_v6_lo
+                    subnet_addr_v6[i] = string.format('%x', subnet_v6)
+                end
+                subnet["ipaddr"] = table.concat(subnet_addr_v6, ":")
+                subnet["protocol"] = 6
+
+            else
+                return nil, "request protocol error"
+            end
+        end
+
+        self.request.questions[i] = {qname = qname, qtype = qtype, qclass = qclass, subnet = subnet}
         self.response.header.qdcount = i
     end
 
