@@ -85,7 +85,12 @@ function _M.new(class)
                         qdcount = 0,
                         ancount = 0,
                         nscount = 0,
-                        arcount = 0
+                        arcount = 0,
+                        subnet = {
+                            netmask = 0,
+                            ipaddr  = 0,
+                            protocol = 0
+                        }
                     },
                     ansections = {},
                     nssections = {},
@@ -248,7 +253,6 @@ function _M.decode_request(self, req)
 
             self.pos = self.pos + 1 -- Source Netmask
             local subnet_netmask = byte(self.buf, self.pos)
-            subnet["netmask"] = subnet_netmask
 
             self.pos = self.pos + 1 -- Scope Netmask:
             if option_family == 1 then
@@ -258,8 +262,9 @@ function _M.decode_request(self, req)
                     self.pos = self.pos + 1
                     subnet_addr_v4[i] = byte(self.buf, self.pos)
                 end
-                subnet["ipaddr"] = table.concat(subnet_addr_v4, ".")
-                subnet["protocol"] = 4
+                self.response.header.subnet.ipaddr = table.concat(subnet_addr_v4, ".")
+                self.response.header.subnet.protocol = 4
+                self.response.header.subnet.netmask = subnet_netmask
 
             elseif option_family == 2 then
 
@@ -270,15 +275,19 @@ function _M.decode_request(self, req)
                     local subnet_v6 = lshift(subnet_v6_hi, 8) + subnet_v6_lo
                     subnet_addr_v6[i] = string.format('%x', subnet_v6)
                 end
-                subnet["ipaddr"] = table.concat(subnet_addr_v6, ":")
-                subnet["protocol"] = 6
+                self.response.header.subnet.ipaddr = table.concat(subnet_addr_v6, ":")
+                self.response.header.subnet.protocol = 6
+                self.response.header.subnet.netmask = subnet_netmask
 
-            else
-                return nil, "request protocol error"
             end
         end
 
-        self.request.questions[i] = {qname = qname, qtype = qtype, qclass = qclass, subnet = subnet}
+        self.request.questions[i] = {
+            qname = qname,
+            qtype = qtype,
+            qclass = qclass,
+            subnet = self.response.header.subnet
+        }
         self.response.header.qdcount = i
     end
 
