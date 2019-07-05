@@ -234,14 +234,20 @@ function _M.decode_request(self, req)
         -- self.pos = self.pos + 2 -- Type
         self.pos = self.pos + 3
         local option_type = byte(self.buf, self.pos)
-        if option_type == 41 then
-            -- self.pos = self.pos + 2 -- UDP payload size
-            -- self.pos = self.pos + 1 -- Higher bits in extended RCODE
-            -- self.pos = self.pos + 1 -- EDNS0 version
-            -- self.pos = self.pos + 2 -- DNSSEC
-            -- self.pos = self.pos + 2 -- Data length
+
+        -- self.pos = self.pos + 2 -- UDP payload size
+        -- self.pos = self.pos + 1 -- Higher bits in extended RCODE
+        -- self.pos = self.pos + 1 -- EDNS0 version
+        -- self.pos = self.pos + 2 -- DNSSEC
+        -- self.pos = self.pos + 2 -- Data length
+        self.pos = self.pos + 8
+        local option_data_length_hi, option_data_length_lo = byte(self.buf, self.pos - 1, self.pos)
+        local option_data_length = lshift(option_data_length_hi, 8) + option_data_length_lo
+
+        if option_type == 41 and option_data_length ~= 0 then
+
             -- self.pos = self.pos + 2 -- Option Code: CSUBNET - Client subnet
-            self.pos = self.pos + 10
+            self.pos = self.pos + 2
 
             self.pos = self.pos + 2 -- Option Length
             local option_length_hi, option_length_lo = byte(self.buf, self.pos - 1, self.pos)
