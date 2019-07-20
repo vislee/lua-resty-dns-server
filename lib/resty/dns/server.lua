@@ -242,7 +242,7 @@ function _M.decode_request(self, req)
         -- self.pos = self.pos + 2 -- Data length
         self.pos = self.pos + 8
         local option_data_length_hi, option_data_length_lo = byte(self.buf, self.pos - 1, self.pos)
-        local option_data_length = lshift(option_data_length_hi, 8) + option_data_length_lo
+	local option_data_length = option_data_length_hi and lshift(option_data_length_hi, 8) + option_data_length_lo or 0
 
         if option_type == 41 and option_data_length ~= 0 then
 
