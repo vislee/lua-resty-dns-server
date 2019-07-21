@@ -6,16 +6,18 @@ local strsub = string.sub
 local strlen = string.len
 local char   = string.char
 local gsub   = string.gsub
+local sfmt   = string.format
 local lshift = bit.lshift
 local rshift = bit.rshift
 local band   = bit.band
 local concat = table.concat
 
+-- https://www.ietf.org/rfc/rfc2929.txt
 -- https://www.ietf.org/rfc/rfc1034.txt
 -- https://www.ietf.org/rfc/rfc1035.txt
 -- https://www.ietf.org/rfc/rfc2782.txt
 -- https://www.ietf.org/rfc/rfc3596.txt
--- https://www.ietf.org/rfc/rfc7871.txt
+-- https://www.ietf.org/rfc/rfc2671.txt
 local TYPE_A      = 1
 local TYPE_NS     = 2
 local TYPE_CNAME  = 5
@@ -37,12 +39,19 @@ local SECTION_AR  = 3
 
 local CNAME_SENTRY = 'CNAME_SENTRY'
 
+-- rfc2929: 2.3 RCODE Assignment
 local RCODE_OK = 0
 local RCODE_FORMAT_ERROR = 1
 local RCODE_SERVER_FAILURE = 2
 local RCODE_NAME_ERROR = 3
 local RCODE_NOT_IMPLEMENTED = 4
 local RCODE_REFUSED = 5
+local RCODE_NOTZONE = 10
+local RCODE_BADVERS = 16
+
+-- http://www.iana.org/assignments/address-family-numbers/address-family-numbers.xhtml
+local ADDR_FAMILY_IP   = 1
+local ADDR_FAMILY_IP6  = 2
 
 local _M = {
     _VERSION    = '0.02',
@@ -63,6 +72,8 @@ local _M = {
     RCODE_NAME_ERROR      = RCODE_NAME_ERROR,
     RCODE_NOT_IMPLEMENTED = RCODE_NOT_IMPLEMENTED,
     RCODE_REFUSED         = RCODE_REFUSED,
+    RCODE_NOTZONE         = RCODE_NOTZONE,
+    RCODE_BADVERS         = RCODE_BADVERS,
 }
 
 local mt = { __index = _M }
@@ -71,7 +82,7 @@ function _M.new(class)
     return setmetatable({
         pos = 0,
         buf = "",
-        request = {header = {}, questions = {}},
+        request = {header = {}, questions = {}, additionals = {}, subnet = {}},
         response = {header = {
                         id = 0,
                         qr = 1,
@@ -85,12 +96,7 @@ function _M.new(class)
                         qdcount = 0,
                         ancount = 0,
                         nscount = 0,
-                        arcount = 0,
-                        subnet = {
-                            netmask = 0,
-                            ipaddr  = 0,
-                            protocol = 0
-                        }
+                        arcount = 0
                     },
                     ansections = {},
                     nssections = {},
@@ -99,6 +105,7 @@ function _M.new(class)
         cnames = {count = 0, },
         }, mt)
 end
+
 
 function _M.decode_request(self, req)
     self.buf = self.buf .. req
@@ -187,7 +194,7 @@ function _M.decode_request(self, req)
     self.pos = self.pos + 2  -- pos=12
     local arc_hi, arc_lo = byte(self.buf, self.pos - 1, self.pos)
     self.request.header.arcount = lshift(arc_hi, 8) + arc_lo
-
+    ngx.log(ngx.DEBUG, "dns server request arcount: ", self.request.header.arcount)
 
     for i = 1, self.request.header.qdcount do
         -- parse qname
@@ -228,73 +235,104 @@ function _M.decode_request(self, req)
         local class_hi, class_lo = byte(self.buf, self.pos - 1, self.pos)
         local qclass = lshift(class_hi, 8) + class_lo
 
-        -- Additional records
-        local subnet = { netmask = 0, ipaddr  = 0, protocol = 0 }
-        -- self.pos = self.pos + 1 -- Name
-        -- self.pos = self.pos + 2 -- Type
-        self.pos = self.pos + 3
-        local option_type = byte(self.buf, self.pos)
-
-        -- self.pos = self.pos + 2 -- UDP payload size
-        -- self.pos = self.pos + 1 -- Higher bits in extended RCODE
-        -- self.pos = self.pos + 1 -- EDNS0 version
-        -- self.pos = self.pos + 2 -- DNSSEC
-        -- self.pos = self.pos + 2 -- Data length
-        self.pos = self.pos + 8
-        local option_data_length_hi, option_data_length_lo = byte(self.buf, self.pos - 1, self.pos)
-        local option_data_length = lshift(option_data_length_hi, 8) + option_data_length_lo
-
-        if option_type == 41 and option_data_length ~= 0 then
-
-            -- self.pos = self.pos + 2 -- Option Code: CSUBNET - Client subnet
-            self.pos = self.pos + 2
-
-            self.pos = self.pos + 2 -- Option Length
-            local option_length_hi, option_length_lo = byte(self.buf, self.pos - 1, self.pos)
-            local option_length = lshift(option_length_hi, 8) + option_length_lo
-
-            self.pos = self.pos + 2 -- Family: IPv4 (1) or Family: IPv6 (2)
-            local option_family_hi, option_family_lo = byte(self.buf, self.pos - 1, self.pos)
-            local option_family = lshift(option_family_hi, 8) + option_family_lo
-
-            self.pos = self.pos + 1 -- Source Netmask
-            local subnet_netmask = byte(self.buf, self.pos)
-
-            self.pos = self.pos + 1 -- Scope Netmask:
-            if option_family == 1 then
-
-                local subnet_addr_v4 = {0,0,0,0}
-                for i = 1, option_length - 4 do
-                    self.pos = self.pos + 1
-                    subnet_addr_v4[i] = byte(self.buf, self.pos)
-                end
-                self.response.header.subnet.ipaddr = table.concat(subnet_addr_v4, ".")
-                self.response.header.subnet.protocol = 4
-                self.response.header.subnet.netmask = subnet_netmask
-
-            elseif option_family == 2 then
-
-                local subnet_addr_v6 = {0,0,0,0,0,0,0,0}
-                for i = 1, (option_length - 4) / 2 do
-                    self.pos = self.pos + 2
-                    local subnet_v6_hi, subnet_v6_lo = byte(self.buf, self.pos - 1, self.pos)
-                    local subnet_v6 = lshift(subnet_v6_hi, 8) + subnet_v6_lo
-                    subnet_addr_v6[i] = string.format('%x', subnet_v6)
-                end
-                self.response.header.subnet.ipaddr = table.concat(subnet_addr_v6, ":")
-                self.response.header.subnet.protocol = 6
-                self.response.header.subnet.netmask = subnet_netmask
-
-            end
-        end
-
-        self.request.questions[i] = {
-            qname = qname,
-            qtype = qtype,
-            qclass = qclass,
-            subnet = self.response.header.subnet
-        }
+        self.request.questions[i] = {qname = qname, qtype = qtype, qclass = qclass}
         self.response.header.qdcount = i
+    end
+
+
+    -- EDNS0(rfc1035,rfc2671,rfc7871)
+    for i = 1, self.request.header.arcount do
+        -- empty name
+        self.pos = self.pos + 1
+        local qname_len = byte(self.buf, self.pos)
+
+        -- parse TYPE(OPT)
+        self.pos = self.pos + 2
+        local opt_type_hi, opt_type_lo = byte(self.buf, self.pos - 1, self.pos)
+        local opt_type = lshift(opt_type_hi, 8) + opt_type_lo
+
+        -- rfc6891, 6.1.2
+        if opt_type == 41 and qname_len == 0 then
+
+            -- parse CLASS(UDP payload size)
+            self.pos = self.pos + 2
+            local udp_size_hi, udp_size_lo = byte(self.buf, self.pos - 1, self.pos)
+            local udp_size = lshift(udp_size_hi, 8) + udp_size_lo
+
+            -- parse TTL(RCODE and flags)
+            self.pos = self.pos + 2
+            local ext_rcode_hi, ext_rcode_lo = byte(self.buf, self.pos - 1, self.pos)
+            local ext_rcode = lshift(ext_rcode_hi, 8) + ext_rcode_lo
+
+            self.pos = self.pos + 2
+            local opt_ver_hi, opt_ver_lo = byte(self.buf, self.pos - 1, self.pos)
+            local opt_ver = lshift(opt_ver_hi, 8) + opt_ver_lo
+            if opt_ver ~= 0 then
+                self.response.header.rcode = RCODE_BADVERS
+                return nil, "bad EDNS0 opt version(" .. opt_ver .. ")"
+            end
+
+            -- parse RDLENGTH(describes RDATA)
+            self.pos = self.pos + 2
+            local rdlen_hi, rdlen_lo = byte(self.buf, self.pos - 1, self.pos)
+            local rdlen = lshift(rdlen_hi, 8) + rdlen_lo
+
+            -- parse RDATA(OPTION)
+            -- rfc7871, 6. Option Format
+
+            -- parse OPTION-CODE
+            self.pos = self.pos + 2
+            local opt_code_hi, opt_code_lo = byte(self.buf, self.pos - 1, self.pos)
+            local opt_code = lshift(opt_code_hi, 8) + opt_code_lo
+
+            -- parse OPTION-LENGTH
+            self.pos = self.pos + 2
+            local opt_len_hi, opt_len_lo = byte(self.buf, self.pos - 1, self.pos)
+            local opt_len = lshift(opt_len_hi, 8) + opt_len_lo
+
+            -- parse OPTION-DATA
+            -- parse FAMILY
+            self.pos = self.pos + 2
+            local opt_family_hi, opt_family_lo = byte(self.buf, self.pos - 1, self.pos)
+            local opt_family = lshift(opt_family_hi, 8) + opt_family_lo
+
+            -- parse SOURCE PREFIX-LENGTH, SCOPE PREFIX-LENGTH
+            self.pos = self.pos + 2
+            local source_prefix_len, scope_prefix_len = byte(self.buf, self.pos - 1, self.pos)
+
+            -- parse address ...
+            -- opt_len include (2B opt_family, 1B source_prefix_len, 1B scope_prefix_len)
+            local address
+            local addr_len = opt_len - 4
+            if opt_family == ADDR_FAMILY_IP then
+                local ipv4 = {0, 0, 0, 0}
+                for i = 1, addr_len do
+                    self.pos = self.pos + 1
+                    ipv4[i] = byte(self.buf, self.pos)
+                end
+                address = concat(ipv4, ".")
+
+            elseif opt_family == ADDR_FAMILY_IP6 then
+                local ipv6 = {0, 0, 0, 0, 0, 0, 0, 0}
+                local idx = 1
+                for i = 1, addr_len, 2 do
+                    self.pos = self.pos + 2
+                    local v6_item_hi, v6_item_lo = byte(self.buf, self.pos - 1, self.pos)
+                    local v6_item = lshift(v6_item_hi, 8) + v6_item_lo
+                    ipv6[idx] = sfmt("%04x", v6_item)
+                    idx = idx + 1
+                end
+                address = concat(ipv6, ":")
+            end
+
+            self.request.subnet[#self.request.subnet + 1] = {address = address,
+                                                             mask = source_prefix_len,
+                                                             family = opt_family}
+
+        else
+            ngx.log(ngx.WARN, "parse EDNS0 error. qname_len: ",
+                qname_len, " opt_type: ", opt_type)
+        end
     end
 
     self.response.header.rcode = RCODE_OK
