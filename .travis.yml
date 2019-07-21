@@ -45,9 +45,7 @@ install:
 
 script:
   - pwd
-  - ls -ltr ../
   - ls -ltr ./
-  - ls -ltr ./lib/resty/dns/
   - cd test-nginx && (sudo cpanm . > build.log 2>&1 || (cat build.log && exit 1)) && cd ..
   - cd luajit2/
   - make -j$JOBS CCDEBUG=-g Q= PREFIX=$LUAJIT_PREFIX CC=$CC XCFLAGS='-DLUA_USE_APICHECK -DLUA_USE_ASSERT -msse4.2' > build.log 2>&1 || (cat build.log && exit 1)
@@ -56,12 +54,8 @@ script:
   - cd lua-cjson && make && sudo PATH=$PATH make install && cd ..
   - export PATH=$PWD/work/nginx/sbin:$PWD/nginx-devel-utils:$PATH
   - ngx-build $NGINX_VERSION --with-stream --add-module=../lua-nginx-module --add-module=../stream-lua-nginx-module --with-debug > build.log 2>&1 || (cat build.log && exit 1)
-  - which nginx
-  - nginx -V
-  - prove -r t/t.t
-
-  - cat t/servroot/conf/nginx.conf
-  - cat t/servroot/logs/error.log
+  - prove -r t/
 
 after_failure: 
+  - cat t/servroot/conf/nginx.conf
   - cat t/servroot/logs/error.log
