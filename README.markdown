@@ -1,6 +1,8 @@
 Name
 ====
 
+[![Build Status](https://travis-ci.org/vislee/lua-resty-dns-server.svg?branch=master)](https://travis-ci.org/vislee/lua-resty-dns-server)
+
 lua-resty-dns-server - Lua DNS server driver for the OpenResty
 
 Table of Contents
