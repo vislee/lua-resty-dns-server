@@ -267,10 +267,10 @@ function _M.decode_request(self, req)
             self.pos = self.pos + 2
             local opt_ver_hi, opt_ver_lo = byte(self.buf, self.pos - 1, self.pos)
             local opt_ver = lshift(opt_ver_hi, 8) + opt_ver_lo
-            if opt_ver ~= 0 then
-                self.response.header.rcode = RCODE_BADVERS
-                return nil, "bad EDNS0 opt version(" .. opt_ver .. ")"
-            end
+            -- if opt_ver ~= 0 then
+            --     self.response.header.rcode = RCODE_BADVERS
+            --     return nil, "bad EDNS0 opt version(" .. opt_ver .. ")"
+            -- end
 
             -- parse RDLENGTH(describes RDATA)
             self.pos = self.pos + 2
