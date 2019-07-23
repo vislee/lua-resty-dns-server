@@ -279,56 +279,56 @@ function _M.decode_request(self, req)
 
             -- parse RDATA(OPTION)
             -- rfc7871, 6. Option Format
+  
+            if rdlen > 0 then
+                -- parse OPTION-CODE
+                self.pos = self.pos + 2
+                local opt_code_hi, opt_code_lo = byte(self.buf, self.pos - 1, self.pos)
+                local opt_code = lshift(opt_code_hi, 8) + opt_code_lo
 
-            -- parse OPTION-CODE
-            self.pos = self.pos + 2
-            local opt_code_hi, opt_code_lo = byte(self.buf, self.pos - 1, self.pos)
-            local opt_code = lshift(opt_code_hi, 8) + opt_code_lo
+                -- parse OPTION-LENGTH
+                self.pos = self.pos + 2
+                local opt_len_hi, opt_len_lo = byte(self.buf, self.pos - 1, self.pos)
+                local opt_len = lshift(opt_len_hi, 8) + opt_len_lo
 
-            -- parse OPTION-LENGTH
-            self.pos = self.pos + 2
-            local opt_len_hi, opt_len_lo = byte(self.buf, self.pos - 1, self.pos)
-            local opt_len = lshift(opt_len_hi, 8) + opt_len_lo
+                -- parse OPTION-DATA
+                -- parse FAMILY
+                self.pos = self.pos + 2
+                local opt_family_hi, opt_family_lo = byte(self.buf, self.pos - 1, self.pos)
+                local opt_family = lshift(opt_family_hi, 8) + opt_family_lo
 
-            -- parse OPTION-DATA
-            -- parse FAMILY
-            self.pos = self.pos + 2
-            local opt_family_hi, opt_family_lo = byte(self.buf, self.pos - 1, self.pos)
-            local opt_family = lshift(opt_family_hi, 8) + opt_family_lo
+                -- parse SOURCE PREFIX-LENGTH, SCOPE PREFIX-LENGTH
+                self.pos = self.pos + 2
+                local source_prefix_len, scope_prefix_len = byte(self.buf, self.pos - 1, self.pos)
 
-            -- parse SOURCE PREFIX-LENGTH, SCOPE PREFIX-LENGTH
-            self.pos = self.pos + 2
-            local source_prefix_len, scope_prefix_len = byte(self.buf, self.pos - 1, self.pos)
+                -- parse address ...
+                -- opt_len include (2B opt_family, 1B source_prefix_len, 1B scope_prefix_len)
+                local address
+                local addr_len = opt_len - 4
+                if opt_family == ADDR_FAMILY_IP then
+                    local ipv4 = {0, 0, 0, 0}
+                    for i = 1, addr_len do
+                        self.pos = self.pos + 1
+                        ipv4[i] = byte(self.buf, self.pos)
+                    end
+                    address = concat(ipv4, ".")
 
-            -- parse address ...
-            -- opt_len include (2B opt_family, 1B source_prefix_len, 1B scope_prefix_len)
-            local address
-            local addr_len = opt_len - 4
-            if opt_family == ADDR_FAMILY_IP then
-                local ipv4 = {0, 0, 0, 0}
-                for i = 1, addr_len do
-                    self.pos = self.pos + 1
-                    ipv4[i] = byte(self.buf, self.pos)
+                elseif opt_family == ADDR_FAMILY_IP6 then
+                    local ipv6 = {0, 0, 0, 0, 0, 0, 0, 0}
+                    local idx = 1
+                    for i = 1, addr_len, 2 do
+                        self.pos = self.pos + 2
+                        local v6_item_hi, v6_item_lo = byte(self.buf, self.pos - 1, self.pos)
+                        local v6_item = lshift(v6_item_hi, 8) + v6_item_lo
+                        ipv6[idx] = sfmt("%04x", v6_item)
+                        idx = idx + 1
+                    end
+                    address = concat(ipv6, ":")
                 end
-                address = concat(ipv4, ".")
-
-            elseif opt_family == ADDR_FAMILY_IP6 then
-                local ipv6 = {0, 0, 0, 0, 0, 0, 0, 0}
-                local idx = 1
-                for i = 1, addr_len, 2 do
-                    self.pos = self.pos + 2
-                    local v6_item_hi, v6_item_lo = byte(self.buf, self.pos - 1, self.pos)
-                    local v6_item = lshift(v6_item_hi, 8) + v6_item_lo
-                    ipv6[idx] = sfmt("%04x", v6_item)
-                    idx = idx + 1
-                end
-                address = concat(ipv6, ":")
+                self.request.subnet[#self.request.subnet + 1] = {address = address,
+                                                                mask = source_prefix_len,
+                                                                family = opt_family}
             end
-
-            self.request.subnet[#self.request.subnet + 1] = {address = address,
-                                                             mask = source_prefix_len,
-                                                             family = opt_family}
-
         else
             ngx.log(ngx.WARN, "parse EDNS0 error. qname_len: ",
                 qname_len, " opt_type: ", opt_type)
