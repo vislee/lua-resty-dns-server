@@ -94,6 +94,11 @@ stream {
             local query = request.questions[1]
             ngx.log(ngx.DEBUG, "qname: ", query.qname, " qtype: ", query.qtype)
 
+            local subnet = request.subnet[1]
+            if subnet then
+                ngx.log(ngx.DEBUG, "subnet addr: ",  subnet.address, " mask: ", subnet.mask, " family: ", subnet.family)
+            end
+
             local cname = "sinacloud.com"
 
             if query.qtype == server.TYPE_CNAME or
@@ -158,6 +163,11 @@ stream {
 
             local query = request.questions[1]
             ngx.log(ngx.DEBUG, "qname: ", query.qname, " qtype: ", query.qtype)
+
+            local subnet = request.subnet[1]
+            if subnet then
+                ngx.log(ngx.DEBUG, "subnet addr: ",  subnet.address, " mask: ", subnet.mask, " family: ", subnet.family)
+            end
 
             if query.qtype == server.TYPE_CNAME or query.qtype == server.TYPE_A then
                 dns:create_cname_answer(query.qname, 600, "sinacloud.com")
@@ -515,6 +525,8 @@ Author
 ======
 
 wenqiang li(vislee)
+
+guocan xu(selboo)
 
 [Back to TOC](#table-of-contents)
 
