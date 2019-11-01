@@ -398,7 +398,20 @@ end
 
 
 local function _encode_txt(txt)
-    return char(#txt) .. txt
+    local result
+    local max = 255
+
+    if #txt <= max then
+        result = char(#txt) .. txt
+    else
+        result = ''
+        for i=1, #txt, max do
+            local part = strsub(txt, i, i+max - 1)
+            result = result .. char(#part) .. part
+        end
+    end
+
+    return result
 end
 
 
@@ -570,8 +583,8 @@ function _M.create_txt_answer(self, name, ttl, txt)
     answer.type = TYPE_TXT
     answer.class = CLASS_IN
     answer.ttl = ttl
-    answer.rdlength = strlen(txt) + 1
     answer.rdata = _encode_txt(txt)
+    answer.rdlength = strlen(answer.rdata)
 
     self.response.header.ancount = self.response.header.ancount + 1
     self.response.ansections[self.response.header.ancount] = answer
