@@ -565,6 +565,10 @@ function _M.create_txt_answer(self, name, ttl, txt)
         return "txt nil"
     end
 
+    if #txt >= 255 then
+        txt = strsub(txt,1,255)
+    end
+
     local answer = {}
     answer.name = name
     answer.type = TYPE_TXT
