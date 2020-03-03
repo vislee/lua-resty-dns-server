@@ -27,6 +27,7 @@ local TYPE_MX     = 15
 local TYPE_TXT    = 16
 local TYPE_AAAA   = 28
 local TYPE_SRV    = 33
+local TYPE_OPT    = 41
 local TYPE_SPF    = 99
 local TYPE_ANY    = 255
 
@@ -280,7 +281,12 @@ function _M.decode_request(self, req)
             -- parse RDATA(OPTION)
             -- rfc7871, 6. Option Format
   
+
+            local rdata = nil
             if rdlen > 0 then
+                -- get whole rdata
+                rdata = strsub(self.buf, self.pos +1   , self.pos + rdlen)
+
                 -- parse OPTION-CODE
                 self.pos = self.pos + 2
                 local opt_code_hi, opt_code_lo = byte(self.buf, self.pos - 1, self.pos)
@@ -329,6 +335,12 @@ function _M.decode_request(self, req)
                                                                 mask = source_prefix_len,
                                                                 family = opt_family}
             end
+            self.request.additionals[#self.request.additionals + 1] = { name="",
+                                                                        type = opt_type, 
+                                                                        class = udp_size,
+                                                                        ttl = ext_rcode,
+                                                                        rdlength = rdlen,
+                                                                        rdata = rdata  }
         else
             ngx.log(ngx.WARN, "parse EDNS0 error. qname_len: ",
                 qname_len, " opt_type: ", opt_type)
@@ -373,7 +385,6 @@ local function _encode_4byt(x)
 
     return char(hi_hi, hi_lo, lo_hi, lo_lo)
 end
-
 
 local function _encode_2byt(x)
     local hi = band(rshift(x, 8), 0x00FF)
@@ -460,12 +471,14 @@ function _M.encode_response(self)
     end
 
     for i = 1, self.response.header.arcount do
-        buf = buf .. _encode_name(self.response.arsections[i].name)
+       	buf = buf .. _encode_name(self.response.arsections[i].name)
         buf = buf .. _encode_2byt(self.response.arsections[i].type)
         buf = buf .. _encode_2byt(self.response.arsections[i].class)
         buf = buf .. _encode_4byt(self.response.arsections[i].ttl or 0x258)
         buf = buf .. _encode_2byt(self.response.arsections[i].rdlength)
-        buf = buf .. self.response.arsections[i].rdata
+        if self.response.arsections[i].rdlength > 0 then 
+		    buf = buf .. self.response.arsections[i].rdata
+	    end
     end
 
     return buf
@@ -514,6 +527,17 @@ function _M.create_a_answer(self, name, ttl, ipv4)
     else
         self.response.header.arcount = self.response.header.arcount + 1
         self.response.arsections[self.response.header.arcount] = answer
+    end
+
+    return nil
+end
+
+function _M.replay_additional_opts(self)
+
+    for i = 1, #self.request.additionals do
+        local additional = self.request.additionals[i]
+        self.response.header.arcount = self.response.header.arcount + 1
+        self.response.arsections[self.response.header.arcount] = additional
     end
 
     return nil
