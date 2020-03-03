@@ -27,6 +27,7 @@ local TYPE_MX     = 15
 local TYPE_TXT    = 16
 local TYPE_AAAA   = 28
 local TYPE_SRV    = 33
+local TYPE_OPT    = 41
 local TYPE_SPF    = 99
 local TYPE_ANY    = 255
 
@@ -267,10 +268,10 @@ function _M.decode_request(self, req)
             self.pos = self.pos + 2
             local opt_ver_hi, opt_ver_lo = byte(self.buf, self.pos - 1, self.pos)
             local opt_ver = lshift(opt_ver_hi, 8) + opt_ver_lo
-            if opt_ver ~= 0 then
-                self.response.header.rcode = RCODE_BADVERS
-                return nil, "bad EDNS0 opt version(" .. opt_ver .. ")"
-            end
+            -- if opt_ver ~= 0 then
+            --     self.response.header.rcode = RCODE_BADVERS
+            --     return nil, "bad EDNS0 opt version(" .. opt_ver .. ")"
+            -- end
 
             -- parse RDLENGTH(describes RDATA)
             self.pos = self.pos + 2
@@ -279,56 +280,67 @@ function _M.decode_request(self, req)
 
             -- parse RDATA(OPTION)
             -- rfc7871, 6. Option Format
+  
 
-            -- parse OPTION-CODE
-            self.pos = self.pos + 2
-            local opt_code_hi, opt_code_lo = byte(self.buf, self.pos - 1, self.pos)
-            local opt_code = lshift(opt_code_hi, 8) + opt_code_lo
+            local rdata = nil
+            if rdlen > 0 then
+                -- get whole rdata
+                rdata = strsub(self.buf, self.pos +1   , self.pos + rdlen)
 
-            -- parse OPTION-LENGTH
-            self.pos = self.pos + 2
-            local opt_len_hi, opt_len_lo = byte(self.buf, self.pos - 1, self.pos)
-            local opt_len = lshift(opt_len_hi, 8) + opt_len_lo
+                -- parse OPTION-CODE
+                self.pos = self.pos + 2
+                local opt_code_hi, opt_code_lo = byte(self.buf, self.pos - 1, self.pos)
+                local opt_code = lshift(opt_code_hi, 8) + opt_code_lo
 
-            -- parse OPTION-DATA
-            -- parse FAMILY
-            self.pos = self.pos + 2
-            local opt_family_hi, opt_family_lo = byte(self.buf, self.pos - 1, self.pos)
-            local opt_family = lshift(opt_family_hi, 8) + opt_family_lo
+                -- parse OPTION-LENGTH
+                self.pos = self.pos + 2
+                local opt_len_hi, opt_len_lo = byte(self.buf, self.pos - 1, self.pos)
+                local opt_len = lshift(opt_len_hi, 8) + opt_len_lo
 
-            -- parse SOURCE PREFIX-LENGTH, SCOPE PREFIX-LENGTH
-            self.pos = self.pos + 2
-            local source_prefix_len, scope_prefix_len = byte(self.buf, self.pos - 1, self.pos)
+                -- parse OPTION-DATA
+                -- parse FAMILY
+                self.pos = self.pos + 2
+                local opt_family_hi, opt_family_lo = byte(self.buf, self.pos - 1, self.pos)
+                local opt_family = lshift(opt_family_hi, 8) + opt_family_lo
 
-            -- parse address ...
-            -- opt_len include (2B opt_family, 1B source_prefix_len, 1B scope_prefix_len)
-            local address
-            local addr_len = opt_len - 4
-            if opt_family == ADDR_FAMILY_IP then
-                local ipv4 = {0, 0, 0, 0}
-                for i = 1, addr_len do
-                    self.pos = self.pos + 1
-                    ipv4[i] = byte(self.buf, self.pos)
+                -- parse SOURCE PREFIX-LENGTH, SCOPE PREFIX-LENGTH
+                self.pos = self.pos + 2
+                local source_prefix_len, scope_prefix_len = byte(self.buf, self.pos - 1, self.pos)
+
+                -- parse address ...
+                -- opt_len include (2B opt_family, 1B source_prefix_len, 1B scope_prefix_len)
+                local address
+                local addr_len = opt_len - 4
+                if opt_family == ADDR_FAMILY_IP then
+                    local ipv4 = {0, 0, 0, 0}
+                    for i = 1, addr_len do
+                        self.pos = self.pos + 1
+                        ipv4[i] = byte(self.buf, self.pos)
+                    end
+                    address = concat(ipv4, ".")
+
+                elseif opt_family == ADDR_FAMILY_IP6 then
+                    local ipv6 = {0, 0, 0, 0, 0, 0, 0, 0}
+                    local idx = 1
+                    for i = 1, addr_len, 2 do
+                        self.pos = self.pos + 2
+                        local v6_item_hi, v6_item_lo = byte(self.buf, self.pos - 1, self.pos)
+                        local v6_item = lshift(v6_item_hi, 8) + v6_item_lo
+                        ipv6[idx] = sfmt("%04x", v6_item)
+                        idx = idx + 1
+                    end
+                    address = concat(ipv6, ":")
                 end
-                address = concat(ipv4, ".")
-
-            elseif opt_family == ADDR_FAMILY_IP6 then
-                local ipv6 = {0, 0, 0, 0, 0, 0, 0, 0}
-                local idx = 1
-                for i = 1, addr_len, 2 do
-                    self.pos = self.pos + 2
-                    local v6_item_hi, v6_item_lo = byte(self.buf, self.pos - 1, self.pos)
-                    local v6_item = lshift(v6_item_hi, 8) + v6_item_lo
-                    ipv6[idx] = sfmt("%04x", v6_item)
-                    idx = idx + 1
-                end
-                address = concat(ipv6, ":")
+                self.request.subnet[#self.request.subnet + 1] = {address = address,
+                                                                mask = source_prefix_len,
+                                                                family = opt_family}
             end
-
-            self.request.subnet[#self.request.subnet + 1] = {address = address,
-                                                             mask = source_prefix_len,
-                                                             family = opt_family}
-
+            self.request.additionals[#self.request.additionals + 1] = { name="",
+                                                                        type = opt_type, 
+                                                                        class = udp_size,
+                                                                        ttl = ext_rcode,
+                                                                        rdlength = rdlen,
+                                                                        rdata = rdata  }
         else
             ngx.log(ngx.WARN, "parse EDNS0 error. qname_len: ",
                 qname_len, " opt_type: ", opt_type)
@@ -373,7 +385,6 @@ local function _encode_4byt(x)
 
     return char(hi_hi, hi_lo, lo_hi, lo_lo)
 end
-
 
 local function _encode_2byt(x)
     local hi = band(rshift(x, 8), 0x00FF)
@@ -460,12 +471,14 @@ function _M.encode_response(self)
     end
 
     for i = 1, self.response.header.arcount do
-        buf = buf .. _encode_name(self.response.arsections[i].name)
+       	buf = buf .. _encode_name(self.response.arsections[i].name)
         buf = buf .. _encode_2byt(self.response.arsections[i].type)
         buf = buf .. _encode_2byt(self.response.arsections[i].class)
         buf = buf .. _encode_4byt(self.response.arsections[i].ttl or 0x258)
         buf = buf .. _encode_2byt(self.response.arsections[i].rdlength)
-        buf = buf .. self.response.arsections[i].rdata
+        if self.response.arsections[i].rdlength > 0 then 
+		    buf = buf .. self.response.arsections[i].rdata
+	    end
     end
 
     return buf
@@ -514,6 +527,17 @@ function _M.create_a_answer(self, name, ttl, ipv4)
     else
         self.response.header.arcount = self.response.header.arcount + 1
         self.response.arsections[self.response.header.arcount] = answer
+    end
+
+    return nil
+end
+
+function _M.replay_additional_opts(self)
+
+    for i = 1, #self.request.additionals do
+        local additional = self.request.additionals[i]
+        self.response.header.arcount = self.response.header.arcount + 1
+        self.response.arsections[self.response.header.arcount] = additional
     end
 
     return nil
