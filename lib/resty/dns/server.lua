@@ -82,6 +82,7 @@ function _M.new(class)
     return setmetatable({
         pos = 0,
         buf = "",
+        len = 0,
         request = {header = {}, questions = {}, additionals = {}, subnet = {}},
         response = {header = {
                         id = 0,
@@ -109,9 +110,10 @@ end
 
 function _M.decode_request(self, req)
     self.buf = self.buf .. req
+    self.len = strlen(self.buf)
 
     -- parse id
-    if self.pos + 2 > strlen(self.buf) then
+    if self.pos + 2 > self.len then
         return nil, "request too short"
     end
 
@@ -251,8 +253,9 @@ function _M.decode_request(self, req)
         local opt_type_hi, opt_type_lo = byte(self.buf, self.pos - 1, self.pos)
         local opt_type = lshift(opt_type_hi, 8) + opt_type_lo
 
+
         -- rfc6891, 6.1.2
-        if opt_type == 41 and qname_len == 0 then
+        if opt_type == 41 and qname_len == 0 and self.len - self.pos >= 20 then
 
             -- parse CLASS(UDP payload size)
             self.pos = self.pos + 2
