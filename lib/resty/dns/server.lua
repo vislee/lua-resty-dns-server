@@ -280,13 +280,12 @@ function _M.decode_request(self, req)
 
             -- parse RDATA(OPTION)
             -- rfc7871, 6. Option Format
-  
 
             local rdata = nil
             if rdlen > 0 then
                 -- get whole rdata
                 rdata = strsub(self.buf, self.pos +1   , self.pos + rdlen)
-
+                
                 -- parse OPTION-CODE
                 self.pos = self.pos + 2
                 local opt_code_hi, opt_code_lo = byte(self.buf, self.pos - 1, self.pos)
@@ -341,6 +340,7 @@ function _M.decode_request(self, req)
                                                                         ttl = ext_rcode,
                                                                         rdlength = rdlen,
                                                                         rdata = rdata  }
+
         else
             ngx.log(ngx.WARN, "parse EDNS0 error. qname_len: ",
                 qname_len, " opt_type: ", opt_type)
